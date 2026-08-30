@@ -48,7 +48,7 @@ pip install -r requirements.txt
 cd app
 python api.py
 ```
-> L'API démarre sur `http://localhost:8000`.
+> L'API démarrera sur `http://localhost:8000`.
 
 ### 3. Frontend (Next.js)
 ```bash
@@ -56,7 +56,7 @@ cd next-frontend
 npm install
 npm run dev -- -p 3005
 ```
-> L'application est accessible sur `http://localhost:3005`.
+> L'application sera donc accessible sur `http://localhost:3005`.
 
 ---
 
