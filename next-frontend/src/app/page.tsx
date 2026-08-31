@@ -132,8 +132,8 @@ export default function OCRStudio() {
       const form = new FormData();
       form.append('file', file);
       form.append('pretraitement', 'true');
-const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/analyze`;
-      const res = await fetch(apiUrl, { method: 'POST', body: form });
+const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}`;
+      const res = await fetch(`${apiUrl}/api/analyze`, { method: 'POST', body: form });
       if (!res.ok) throw new Error(`Erreur serveur : ${res.status}`);
       const data: ResultatOCR = await res.json();
       if (!data.success) throw new Error('Échec de la reconnaissance IA.');
