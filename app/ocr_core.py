@@ -36,7 +36,7 @@ except ImportError as exc:  # pragma: no cover
 import difflib
 
 DICTIONNAIRE_MANUSCRIT = {
-    # Mots courants et salutations
+    # Salutations & Mots courants (Français & Anglais)
     "bonjou": "Bonjour",
     "bonjown": "Bonjour",
     "bonjour": "Bonjour",
@@ -50,36 +50,71 @@ DICTIONNAIRE_MANUSCRIT = {
     "world": "World",
     "wosld": "World",
     "wold": "World",
-    # Documents / Administratif / Factures
+    "thank": "Thank",
+    "thanks": "Thanks",
+    "please": "Please",
+    "welcome": "Welcome",
+    "dear": "Dear",
+    "sincerely": "Sincerely",
+    "regards": "Regards",
+    # Documents / Administratif / Factures (FR & EN)
     "facture": "Facture",
+    "invoice": "Invoice",
     "client": "Client",
+    "customer": "Customer",
     "fournisseur": "Fournisseur",
+    "supplier": "Supplier",
+    "vendor": "Vendor",
     "total": "Total",
+    "subtotal": "Subtotal",
     "date": "Date",
     "montant": "Montant",
+    "amount": "Amount",
     "quantite": "Quantité",
+    "quantity": "Quantity",
+    "qty": "Qty",
     "qte": "Qté",
     "prix": "Prix",
+    "price": "Price",
+    "cost": "Cost",
     "nom": "Nom",
+    "name": "Name",
     "prenom": "Prénom",
+    "first": "First",
+    "last": "Last",
     "adresse": "Adresse",
+    "address": "Address",
     "article": "Article",
+    "item": "Item",
     "designation": "Désignation",
     "description": "Description",
     "numero": "Numéro",
+    "number": "Number",
     "num": "N°",
+    "no": "No.",
     "signature": "Signature",
     "tva": "TVA",
+    "tax": "Tax",
+    "vat": "VAT",
     "ttc": "TTC",
     "ht": "HT",
     "societe": "Société",
+    "company": "Company",
     "entreprise": "Entreprise",
     "rapport": "Rapport",
+    "report": "Report",
     "compte": "Compte",
+    "account": "Account",
+    "notes": "Notes",
+    "meeting": "Meeting",
+    "project": "Project",
+    "summary": "Summary",
+    "review": "Review",
 }
 
 VOCABULAIRE_ETENDU = [
-    "bonjour", "bonsoir", "salut", "monde", "hello", "world", "chere", "cher",
+    # Français
+    "bonjour", "bonsoir", "salut", "monde", "chere", "cher",
     "facture", "client", "fournisseur", "total", "date", "montant", "quantite", "qte",
     "prix", "nom", "prenom", "adresse", "article", "designation", "description", "numero",
     "signature", "tva", "ttc", "ht", "societe", "entreprise", "rapport", "compte",
@@ -89,7 +124,17 @@ VOCABULAIRE_ETENDU = [
     "dollar", "dollars", "somme", "reglement", "especes", "cheque", "virement", "carte",
     "bancaire", "telephone", "email", "livraison", "commande", "devis", "remise", "acompte",
     "solde", "reste", "unitaire", "taux", "produit", "service", "ville", "pays", "code",
-    "postal", "mail", "contact", "observations", "remarques", "validite", "conditions"
+    "postal", "mail", "contact", "observations", "remarques", "validite", "conditions",
+    # Anglais
+    "hello", "world", "thank", "thanks", "please", "welcome", "dear", "sincerely", "regards",
+    "invoice", "customer", "supplier", "vendor", "subtotal", "amount", "quantity", "qty",
+    "price", "cost", "name", "first", "last", "address", "item", "number", "tax", "vat",
+    "company", "report", "account", "notes", "meeting", "project", "summary", "review",
+    "january", "february", "march", "april", "may", "june", "july", "august", "september",
+    "october", "november", "december", "monday", "tuesday", "wednesday", "thursday",
+    "friday", "saturday", "sunday", "united", "states", "street", "city", "phone",
+    "email", "order", "delivery", "discount", "payment", "cash", "check", "bank",
+    "signature", "balance", "due", "unit", "rate", "terms", "statement", "receipt"
 ]
 
 # Remplacement de segments ou confusions fréquentes
@@ -104,8 +149,31 @@ CONFUSIONS_SEGMENTS = [
 ]
 
 
+# Liste des mots valides courants en français et en anglais (pour ne JAMAIS les écraser)
+MOTS_COURANTS_VALIDES = {
+    # Anglais
+    "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not", "on", "with",
+    "he", "as", "you", "do", "at", "this", "but", "his", "by", "from", "they", "we", "say", "her",
+    "she", "or", "an", "will", "my", "one", "all", "would", "there", "their", "what", "so", "up",
+    "out", "if", "about", "who", "get", "which", "go", "me", "when", "make", "can", "like", "time",
+    "no", "just", "him", "know", "take", "people", "into", "year", "your", "good", "some", "could",
+    "them", "see", "other", "than", "then", "now", "look", "only", "come", "its", "over", "think",
+    "also", "back", "after", "use", "two", "how", "our", "work", "first", "well", "way", "even",
+    "new", "want", "because", "any", "these", "give", "day", "most", "us", "dear", "please",
+    "review", "attached", "project", "proposal", "total", "estimated", "cost", "vat", "included",
+    "schedule", "meeting", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "best", "regards", "sincerely", "manager", "director", "officer", "call", "questions", "hesitate",
+    "notes", "report", "summary", "invoice", "receipt", "account", "client", "customer", "price", "amount",
+    # Français
+    "le", "la", "les", "un", "une", "des", "du", "de", "ce", "cet", "cette", "ces", "et", "ou", "mais",
+    "donc", "or", "ni", "car", "dans", "par", "pour", "en", "vers", "avec", "sans", "sous", "sur",
+    "bonjour", "bonsoir", "salut", "merci", "monsieur", "madame", "date", "nom", "prenom", "adresse",
+    "societe", "entreprise", "facture", "devis", "commande", "livraison", "montant", "quantite", "prix",
+    "total", "remarques", "signature", "client", "fournisseur"
+}
+
 def _nettoyer_texte_manuscrit(texte: str, confiance: float) -> str:
-    """Nettoie et affine le texte extrait par l'OCR manuscrit."""
+    """Nettoie et affine le texte extrait par l'OCR manuscrit sans altérer l'anglais ni le français."""
     if not texte:
         return ""
 
@@ -119,14 +187,17 @@ def _nettoyer_texte_manuscrit(texte: str, confiance: float) -> str:
     for motif, repl in CONFUSIONS_SEGMENTS:
         t = re.sub(motif, repl, t, flags=re.IGNORECASE)
 
-    # 3. Nettoyer les faux espaces autour des apostrophes et tirets
+    # 3. Normalisation des contractions anglaises et françaises
+    t = re.sub(r"\b([Ww]e|[Yy]ou|[Tt]hey|[Ii]|[Hh]e|[Ss]he|[Ii]t)\s*['’]?\s*ll\b", r"\1'll", t)
+    t = re.sub(r"\b([Dd]on|[Cc]an|[Ww]on|[Dd]idn|[Ww]asn|[Ww]eren|[Ii]sn|[Aa]ren|[Hh]asn|[Hh]aven|[Cc]ouldn|[Ss]houldn|[Ww]ouldn)\s*['’]?\s*t\b", r"\1't", t)
+    t = re.sub(r"\b([Ii])\s*['’]?\s*m\b", r"\1'm", t)
+    t = re.sub(r"\b([Yy]ou|[Ww]e|[Tt]hey)\s*['’]?\s*re\b", r"\1're", t)
+    t = re.sub(r"\b([Ii]t|[Hh]e|[Ss]he)\s*['’]?\s*s\b", r"\1's", t)
     t = re.sub(r"\b([ldjmnstcLDJMNSTC])\s+['’]", r"\1'", t)
     t = re.sub(r"['’]\s+", "'", t)
     t = re.sub(r"\s+-\s+", "-", t)
-    t = re.sub(r"\s+,", ",", t)
-    t = re.sub(r"\s+\.", ".", t)
 
-    # 4. Traitement mot par mot avec dictionnaire contextuel et fuzzy matching
+    # 4. Traitement mot par mot
     mots = t.split()
     mots_corriges = []
     for mot in mots:
@@ -142,6 +213,8 @@ def _nettoyer_texte_manuscrit(texte: str, confiance: float) -> str:
             mot = mot[:-1]
 
         mot_lower = mot.lower()
+
+        # Si le mot est dans le dictionnaire direct de corrections
         if mot_lower in DICTIONNAIRE_MANUSCRIT:
             corrige = DICTIONNAIRE_MANUSCRIT[mot_lower]
             if mot.isupper():
@@ -151,9 +224,12 @@ def _nettoyer_texte_manuscrit(texte: str, confiance: float) -> str:
             elif mot.islower():
                 corrige = corrige.lower()
             mot = corrige
-        elif len(mot_lower) >= 3:
-            # Fuzzy match avec le vocabulaire pour corriger les cursives imparfaites
-            proches = difflib.get_close_matches(mot_lower, VOCABULAIRE_ETENDU, n=1, cutoff=0.62)
+        # Ne PAS corriger un mot déjà valide en français ou en anglais
+        elif mot_lower in MOTS_COURANTS_VALIDES:
+            pass
+        # Si confiance faible et mot non reconnu, chercher un mot proche avec seuil strict (0.85)
+        elif len(mot_lower) >= 4 and confiance < 0.55:
+            proches = difflib.get_close_matches(mot_lower, VOCABULAIRE_ETENDU, n=1, cutoff=0.85)
             if proches:
                 corrige = proches[0]
                 if mot.isupper():
@@ -163,24 +239,17 @@ def _nettoyer_texte_manuscrit(texte: str, confiance: float) -> str:
                 elif mot.islower():
                     corrige = corrige.lower()
                 mot = corrige
-        elif mot_lower.startswith("%") or mot_lower.startswith("&"):
-            if "ello" in mot_lower:
-                mot = "Hello"
 
         mots_corriges.append(prefixe + mot + suffixe)
 
     res = " ".join(mots_corriges).strip()
     if not res:
-        return texte
+        return ""
 
-    # 5. Typographie et mise en forme soignée (comme dans un traitement de texte Word)
-    # Espaces avant la ponctuation
+    # 5. Typographie soignée (espaces et ponctuation)
     res = re.sub(r'\s+([,.:;!?])', r'\1', res)
-    # Espace après la ponctuation
     res = re.sub(r'([,.:;!?])([A-Za-zÀ-ÿ0-9])', r'\1 \2', res)
-    # Corriger les doubles espaces
     res = re.sub(r'\s{2,}', ' ', res)
-    # Majuscule au début de la phrase ou de la ligne
     if res and res[0].islower():
         res = res[0].upper() + res[1:]
 
@@ -422,8 +491,16 @@ class LecteurManuscrit:
         lignes: list[LigneReconnue] = []
         for boite, texte_brut, confiance in resultats_bruts:
             texte_affine = _nettoyer_texte_manuscrit(texte_brut, float(confiance))
-            conf_finale = min(1.0, float(confiance) + (0.12 if texte_affine != texte_brut else 0.0))
-            
+
+            # Ignorer les lignes vides ou qui ne contiennent que du bruit
+            if not texte_affine or texte_affine.strip() in ('', '_', '~', '-', '.', ',', '|', '/', '\\'):
+                continue
+            # Ignorer les détections de très faible confiance (< 5%) ET très courtes (1-2 chars)
+            if float(confiance) < 0.05 and len(texte_affine.strip()) <= 2:
+                continue
+
+            conf_finale = min(1.0, float(confiance) + (0.08 if texte_affine != texte_brut else 0.0))
+
             lignes.append(
                 LigneReconnue(
                     texte=texte_affine,
