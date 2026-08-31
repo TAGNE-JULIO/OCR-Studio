@@ -19,6 +19,7 @@ from ocr_core import LecteurManuscrit
 
 app = FastAPI(title="OCR Manuscrit API Professionnelle")
 
+origins=os.getenv("CORS_ORIGINS" , "https://orc-api.onrender.com"
 # Permettre à Next.js (port 3000) de communiquer avec l'API
 app.add_middleware(
     CORSMiddleware,
