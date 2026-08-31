@@ -19,11 +19,11 @@ from ocr_core import LecteurManuscrit
 
 app = FastAPI(title="OCR Manuscrit API Professionnelle")
 
-origins=os.getenv("CORS_ORIGINS" , "https://orc-api.onrender.com")
+origins=os.getenv("CORS_ORIGINS" , "https://orc-frontend-c7ya.onrender.com").split(",")
 # Permettre à Next.js (port 3000) de communiquer avec l'API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -91,7 +91,7 @@ async def analyze_image(
         "matrice": matrice
     }
 
-if __name__ == "__main__":
-    # Point d'entrée pour lancer le serveur API complet
-    print("Démarrage du serveur web sur http://localhost:8000")
-    uvicorn.run("api:app", host="127.0.0.1", port=8000, reload=True)
+# if __name__ == "__main__":
+#     # Point d'entrée pour lancer le serveur API complet
+#     print("Démarrage du serveur web sur http://localhost:8000")
+#     uvicorn.run("api:app", host="127.0.0.1", port=8000, reload=True)
