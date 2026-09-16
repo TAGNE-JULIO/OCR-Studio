@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "app/api.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "next-frontend/package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "app/api.py"
+    },
+    {
+      "src": "/health",
+      "dest": "app/api.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "next-frontend/$1"
+    }
+  ]
+}
