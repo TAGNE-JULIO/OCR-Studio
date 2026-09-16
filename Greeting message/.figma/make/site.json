@@ -1,0 +1,10 @@
+{
+  "description": "Connect with French speakers and learners through engaging conversations, enhancing language skills and cultural exchange in a user-friendly environment.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

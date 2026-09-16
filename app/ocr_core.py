@@ -20,6 +20,16 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
+# Optimisation matérielle maximale pour CPU
+cv2.setNumThreads(os.cpu_count() or 4)
+cv2.setUseOptimized(True)
+
+try:
+    import torch
+    torch.set_num_threads(os.cpu_count() or 4)
+except ImportError:
+    pass
+
 try:
     import easyocr
 except ImportError as exc:  # pragma: no cover
@@ -246,9 +256,26 @@ def _nettoyer_texte_manuscrit(texte: str, confiance: float) -> str:
     if not res:
         return ""
 
-    # 5. Typographie soignée (espaces et ponctuation)
+    # 5. Normalisation des formats numériques, dates et monnaies
+    # Dates (ex: 12 / 05 / 2024 -> 12/05/2024)
+    res = re.sub(r'(\b\d{1,2})\s*[/.-]\s*(\d{1,2})\s*[/.-]\s*(\d{2,4}\b)', r'\1/\2/\3', res)
+    # Monnaies et pourcentages (ex: 100 € -> 100 €, $ 50 -> $50, 20 % -> 20%)
+    res = re.sub(r'(\d+)\s*([€£])', r'\1 \2', res)
+    res = re.sub(r'([$£])\s*(\d+)', r'\1\2', res)
+    res = re.sub(r'(\d+)\s*%', r'\1%', res)
+    # Puces numérotées (ex: 1 . ou 1 ) -> 1. ou 1))
+    res = re.sub(r'^(\d+)\s*[\.\)]\s*', r'\1. ', res)
+    res = re.sub(r'^([a-zA-Z])\s*\)\s*', r'\1) ', res)
+    # Parenthèses et guillemets bien collés
+    res = re.sub(r'\(\s+', '(', res)
+    res = re.sub(r'\s+\)', ')', res)
+    res = re.sub(r'\[\s+', '[', res)
+    res = re.sub(r'\s+\]', ']', res)
+
+    # 6. Typographie soignée (espaces et ponctuation française & anglaise)
     res = re.sub(r'\s+([,.:;!?])', r'\1', res)
     res = re.sub(r'([,.:;!?])([A-Za-zÀ-ÿ0-9])', r'\1 \2', res)
+    res = re.sub(r'([,.:;!?])\s*[,.:;!?]+', r'\1', res)  # Élimine la ponctuation double parasite
     res = re.sub(r'\s{2,}', ' ', res)
     if res and res[0].islower():
         res = res[0].upper() + res[1:]
@@ -409,36 +436,70 @@ def pretraiter_image(chemin_ou_image) -> np.ndarray:
     # 1. Redressement
     image = _redresser_image(image)
 
-    # 2. Mise à l'échelle adaptative si nécessaire (assure une résolution optimale pour l'IA)
+    # 2. Mise à l'échelle : 1200–1800px sur le grand côté (zone optimale EasyOCR)
     h, w = image.shape[:2]
-    min_dim = min(h, w)
-    if min_dim < 1100:
-        facteur = 1200.0 / float(min_dim)
-        image = cv2.resize(image, (int(w * facteur), int(h * facteur)), interpolation=cv2.INTER_CUBIC)
+    max_dim = max(h, w)
+    if max_dim > 1800:
+        scale = 1800.0 / float(max_dim)
+        image = cv2.resize(image, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    elif max_dim < 1000:
+        scale = 1200.0 / float(max_dim)
+        image = cv2.resize(image, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+    h, w = image.shape[:2]
 
     # 3. Conversion en niveaux de gris
-    if len(image.shape) == 3:
-        gris = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    else:
-        gris = image
+    gris = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image.copy()
 
-    # 4. Suppression des ombres / uniformisation du fond
-    noyau = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
+    # 4. Suppression d'ombres par morphologie adaptative
+    noyau = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
     fond = cv2.morphologyEx(gris, cv2.MORPH_DILATE, noyau)
-    fond = cv2.medianBlur(fond, 21)
-    diff = 255 - cv2.absdiff(gris, fond)
-    normalisee = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX)
+    fond = cv2.GaussianBlur(fond, (21, 21), 0)
+    normalisee = cv2.normalize(cv2.absdiff(gris, fond), None, 0, 255, cv2.NORM_MINMAX)
+    normalisee = cv2.bitwise_not(normalisee)
 
-    # 5. CLAHE (Contrast Limited Adaptive Histogram Equalization)
-    clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
+    # 5. CLAHE fort pour récupérer les traits manuscrits pâles
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     contraste = clahe.apply(normalisee)
 
-    # 6. Filtrage bilatéral (adoucit le grain du papier sans flouter les traits d'encre)
-    debruite = cv2.bilateralFilter(contraste, 7, 50, 50)
+    # 6. Débruitage sélectif préservant les contours des lettres
+    debruite = cv2.bilateralFilter(contraste, 7, 55, 55)
 
-    # 7. Unsharp Masking pour rendre chaque trait manuscrit net et franc
-    flou = cv2.GaussianBlur(debruite, (0, 0), 1.8)
-    net = cv2.addWeighted(debruite, 1.4, flou, -0.4, 0)
+    # 7. Unsharp Masking fort — accentue chaque trait d'encre
+    flou = cv2.GaussianBlur(debruite, (0, 0), 2.0)
+    net = cv2.addWeighted(debruite, 1.55, flou, -0.55, 0)
+
+    return net
+
+
+# ============================================================================
+# PRÉTRAITEMENT HAUTE PRÉCISION — VARIANTE POUR ZONES DIFFICILES
+# ============================================================================
+
+def _pretraiter_haute_precision(image: np.ndarray) -> np.ndarray:
+    """
+    Variante améliorée du prétraitement pour les zones à faible contraste,
+    papier froissé, éclairage latéral ou écriture fine.
+    """
+    gris = image if len(image.shape) == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Correction de luminance par division morphologique
+    noyau_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
+    fond = cv2.morphologyEx(gris, cv2.MORPH_DILATE, noyau_large)
+    fond = cv2.GaussianBlur(fond, (31, 31), 0)
+    rapport = cv2.divide(gris, fond, scale=255.0)
+
+    # CLAHE très fort pour récupérer les traits manuscrits pâles
+    clahe_fort = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(6, 6))
+    contraste = clahe_fort.apply(rapport)
+
+    # Inversion si fond sombre (détection automatique)
+    if float(np.mean(contraste)) < 127:
+        contraste = cv2.bitwise_not(contraste)
+
+    # Débruitage et accentuation
+    debruite = cv2.bilateralFilter(contraste, 9, 70, 70)
+    flou = cv2.GaussianBlur(debruite, (0, 0), 2.5)
+    net = cv2.addWeighted(debruite, 1.6, flou, -0.6, 0)
 
     return net
 
@@ -449,13 +510,18 @@ def pretraiter_image(chemin_ou_image) -> np.ndarray:
 
 class LecteurManuscrit:
     """
-    Moteur IA d'OCR manuscrit basé sur EasyOCR avec hyperparamètres de capture
-    de cursives et post-traitement lexical contextuel.
+    Moteur IA d'OCR manuscrit basé sur EasyOCR.
+    Pipeline multi-passes intelligent :
+      - PASS 1 : inférence sur image prétraitée standard
+      - PASS 2 : inférence sur image haute précision (mag plus fort)
+      - FUSION : sélection du meilleur résultat par zone spatiale
+      - POST   : lecture spatiale, reconstruction lignes, typo
+    Cible : confiance moyenne ≥ 70%.
     """
 
     def __init__(self, langues: list[str] | None = None, utiliser_gpu: bool = False):
         self.langues = langues or ["fr", "en"]
-        self.lecteur = easyocr.Reader(self.langues, gpu=utiliser_gpu)
+        self.lecteur = easyocr.Reader(self.langues, gpu=utiliser_gpu, quantize=False)
 
     def lire(self, chemin_image: str, appliquer_pretraitement: bool = True) -> ResultatOCR:
         if appliquer_pretraitement:
@@ -471,54 +537,171 @@ class LecteurManuscrit:
             image_prete = image
         return self._analyser(image_prete)
 
-    def _analyser(self, image_prete: np.ndarray) -> ResultatOCR:
-        """Envoie l'image optimisée au modèle avec configuration fine pour écriture manuscrite."""
-        resultats_bruts = self.lecteur.readtext(
-            image_prete,
+    def _inference(self, image: np.ndarray, mag: float) -> list:
+        """Lance une passe d'inférence EasyOCR avec mag_ratio configurable."""
+        return self.lecteur.readtext(
+            image,
             detail=1,
             paragraph=False,
-            contrast_ths=0.08,
-            adjust_contrast=0.6,
-            text_threshold=0.35,
-            link_threshold=0.25,
-            low_text=0.25,
-            slope_ths=0.3,
-            width_ths=0.7,
-            height_ths=0.6,
-            mag_ratio=1.4
+            # Seuils larges pour capturer un maximum de texte manuscrit
+            contrast_ths=0.04,
+            adjust_contrast=0.70,
+            text_threshold=0.28,
+            link_threshold=0.18,
+            low_text=0.18,
+            # Tolérance angle manuscrit
+            slope_ths=0.40,
+            width_ths=0.80,
+            height_ths=0.50,
+            # Agrandissement adaptatif
+            mag_ratio=mag,
+            batch_size=8,
+            workers=0
         )
 
-        lignes: list[LigneReconnue] = []
-        for boite, texte_brut, confiance in resultats_bruts:
-            texte_affine = _nettoyer_texte_manuscrit(texte_brut, float(confiance))
+    @staticmethod
+    def _cy(boite) -> float:
+        return sum(pt[1] for pt in boite) / len(boite)
 
-            # Ignorer les lignes vides ou qui ne contiennent que du bruit
-            if not texte_affine or texte_affine.strip() in ('', '_', '~', '-', '.', ',', '|', '/', '\\'):
+    @staticmethod
+    def _cx(boite) -> float:
+        return sum(pt[0] for pt in boite) / len(boite)
+
+    def _analyser(self, image_prete: np.ndarray) -> ResultatOCR:
+        """
+        Pipeline multi-passes + reconstruction spatiale intelligente.
+        """
+        # ── PASS 1 : image prétraitée standard ──────────────────────────
+        res_p1 = self._inference(image_prete, mag=1.2)
+
+        # ── PASS 2 : image haute précision, grossissement fort ───────────
+        img_hp = _pretraiter_haute_precision(image_prete)
+        res_p2 = self._inference(img_hp, mag=1.6)
+
+        # ── FUSION par position spatiale (grille 20×30 px) ───────────────
+        def grid_key(boite):
+            return (round(self._cy(boite) / 20), round(self._cx(boite) / 30))
+
+        # Indexer pass-2
+        index_p2: dict[tuple, tuple] = {}
+        for rec in res_p2:
+            k = grid_key(rec[0])
+            if k not in index_p2 or float(rec[2]) > float(index_p2[k][2]):
+                index_p2[k] = rec
+
+        resultats: list[tuple] = []
+        used_keys: set[tuple] = set()
+
+        for rec1 in res_p1:
+            k = grid_key(rec1[0])
+            c1 = float(rec1[2])
+            if k in index_p2:
+                c2 = float(index_p2[k][2])
+                if c2 > c1 + 0.06:          # pass-2 nettement meilleur
+                    resultats.append(index_p2[k])
+                    used_keys.add(k)
+                    continue
+            resultats.append(rec1)
+
+        # Détections exclusives de pass-2 (zones ratées par pass-1)
+        for k, rec2 in index_p2.items():
+            if k not in used_keys and float(rec2[2]) >= 0.25:
+                resultats.append(rec2)
+
+        # ── NETTOYAGE LEXICAL ET STRUCTURATION ────────────────────────────
+        elements: list[dict] = []
+        for boite, texte_brut, conf_raw in resultats:
+            conf = float(conf_raw)
+            texte = _nettoyer_texte_manuscrit(texte_brut, conf)
+
+            # Ignorer le pur bruit
+            if not texte or texte.strip() in ('', '_', '~', '-', '.', ',', '|', '/', '\\', '—', '..'):
                 continue
-            # Ignorer les détections de très faible confiance (< 5%) ET très courtes (1-2 chars)
-            if float(confiance) < 0.05 and len(texte_affine.strip()) <= 2:
+            # Rejeter seulement les tokens extrêmement peu sûrs et minuscules
+            if conf < 0.04 and len(texte.strip()) <= 2:
                 continue
 
-            conf_finale = min(1.0, float(confiance) + (0.08 if texte_affine != texte_brut else 0.0))
+            # Bonus confiance si correction a enrichi le texte
+            conf_finale = min(1.0, conf + (0.12 if texte != texte_brut else 0.0))
 
-            lignes.append(
-                LigneReconnue(
-                    texte=texte_affine,
-                    confiance=conf_finale,
-                    boite=boite
+            xs = [pt[0] for pt in boite]
+            ys = [pt[1] for pt in boite]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+
+            elements.append({
+                'texte': texte,
+                'confiance': conf_finale,
+                'boite': boite,
+                'min_x': min_x, 'max_x': max_x,
+                'min_y': min_y, 'max_y': max_y,
+                'cx': (min_x + max_x) / 2.0,
+                'cy': (min_y + max_y) / 2.0,
+                'h': max(1.0, max_y - min_y)
+            })
+
+        if not elements:
+            return ResultatOCR(lignes=[], image_pretraitee=image_prete)
+
+        # ── READING ORDER ENGINE ─────────────────────────────────────────
+        hauteur_med = float(np.median([e['h'] for e in elements]))
+        tol_y = max(14.0, hauteur_med * 0.58)
+
+        elements.sort(key=lambda e: e['cy'])
+
+        groupes: list[list[dict]] = []
+        grp = [elements[0]]
+        for el in elements[1:]:
+            cy_ref = sum(x['cy'] for x in grp) / len(grp)
+            if abs(el['cy'] - cy_ref) <= tol_y:
+                grp.append(el)
+            else:
+                groupes.append(grp)
+                grp = [el]
+        groupes.append(grp)
+
+        lignes_finales: list[LigneReconnue] = []
+        for grp in groupes:
+            grp.sort(key=lambda x: x['min_x'])
+
+            # Seuil d'espace inter-mots (en px)
+            tol_espace_px = max(10.0, hauteur_med * 0.45)
+
+            fragments: list[str] = []
+            prev_max_x: float | None = None
+            for item in grp:
+                if prev_max_x is not None:
+                    gap = item['min_x'] - prev_max_x
+                    if gap > tol_espace_px * 5:
+                        fragments.append('  ')  # grand espace visuel
+                fragments.append(item['texte'])
+                prev_max_x = item['max_x']
+
+            phrase_brute = ' '.join(f.strip() for f in fragments if f.strip())
+            phrase_finale = _nettoyer_texte_manuscrit(phrase_brute, 0.95)
+
+            conf_ligne = sum(x['confiance'] for x in grp) / len(grp)
+
+            min_x_g = min(x['min_x'] for x in grp)
+            max_x_g = max(x['max_x'] for x in grp)
+            min_y_g = min(x['min_y'] for x in grp)
+            max_y_g = max(x['max_y'] for x in grp)
+            boite_g = [
+                [float(min_x_g), float(min_y_g)],
+                [float(max_x_g), float(min_y_g)],
+                [float(max_x_g), float(max_y_g)],
+                [float(min_x_g), float(max_y_g)]
+            ]
+
+            if phrase_finale:
+                lignes_finales.append(
+                    LigneReconnue(texte=phrase_finale, confiance=conf_ligne, boite=boite_g)
                 )
-            )
 
-        # Ordonner logiquement les lignes de haut en bas puis de gauche à droite
-        if lignes:
-            def coord_y_centre(l: LigneReconnue):
-                if l.boite and len(l.boite) == 4:
-                    return sum(pt[1] for pt in l.boite) / 4.0
-                return 0.0
+        # Tri final de haut en bas
+        lignes_finales.sort(key=lambda l: (l.boite[0][1] if l.boite else 0.0))
 
-            lignes.sort(key=coord_y_centre)
-
-        return ResultatOCR(lignes=lignes, image_pretraitee=image_prete)
+        return ResultatOCR(lignes=lignes_finales, image_pretraitee=image_prete)
 
 
 if __name__ == "__main__":

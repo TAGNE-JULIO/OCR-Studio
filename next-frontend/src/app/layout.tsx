@@ -1,27 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "⚡ OCR Studio – Manuscrit vers Texte",
-  description: "Application professionnelle de reconnaissance d'écriture manuscrite propulsée par l'IA. Convertissez, structurez et exportez vos documents en quelques secondes.",
-  keywords: ["OCR", "manuscrit", "reconnaissance", "intelligence artificielle", "tableau", "Excel"],
+  title: "OCR Studio Pro — Transcription Intelligente de Manuscrits",
+  description: "Plateforme professionnelle de transcription de manuscrits, formules mathématiques et tableaux par IA.",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -30,8 +17,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" translate="no" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="min-h-screen bg-[#111318] text-gray-100 overflow-hidden">
+    <html lang="fr" translate="no" suppressHydrationWarning>
+      <body className="min-h-screen bg-[#080b14] text-[#e8eaf2] mesh-bg antialiased selection:bg-[#7c5cfc]/30 selection:text-[#22d4fd]">
         {children}
       </body>
     </html>
