@@ -20,6 +20,14 @@
       "dest": "app/api.py"
     },
     {
+      "src": "/_next/(.*)",
+      "dest": "next-frontend/_next/$1"
+    },
+    {
+      "src": "/static/(.*)",
+      "dest": "next-frontend/static/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "next-frontend/$1"
     }
