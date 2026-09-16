@@ -51,14 +51,17 @@ def get_lecteur():
             # Fallback EasyOCR si OpenAI non configure
             print("[API] Cle OpenAI manquante. Chargement EasyOCR local...")
             try:
-                # Import tardif pour eviter de charger PyTorch si pas necessaire
-                import torch
-                torch.set_num_threads(os.cpu_count() or 4)
-            except Exception:
-                pass
-            from ocr_core import LecteurManuscrit
-            _lecteur = LecteurManuscrit(langues=["fr", "en"])
-            print("[API] EasyOCR pret.")
+                try:
+                    import torch
+                    torch.set_num_threads(os.cpu_count() or 4)
+                except Exception:
+                    pass
+                from ocr_core import LecteurManuscrit
+                _lecteur = LecteurManuscrit(langues=["fr", "en"])
+                print("[API] EasyOCR pret.")
+            except Exception as e:
+                print(f"[API] Impossible de charger le moteur local EasyOCR: {e}")
+                _lecteur = moteur
     return _lecteur
 
 

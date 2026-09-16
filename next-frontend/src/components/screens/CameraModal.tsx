@@ -3,8 +3,8 @@ import { Camera, X, RotateCcw, FlipHorizontal } from 'lucide-react';
 import { InputMode } from '../../types';
 
 interface CameraModalProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
-  canvasRef: React.RefObject<HTMLCanvasElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
   setInputMode: (m: InputMode) => void;
   setCamFront: React.Dispatch<React.SetStateAction<boolean>>;
   capturePhoto: () => void;

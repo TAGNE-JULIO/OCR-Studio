@@ -24,7 +24,7 @@ interface ReviewScreenProps {
   onMouseDown: (e: React.MouseEvent) => void;
   onMouseMove: (e: React.MouseEvent) => void;
   onMouseUp: () => void;
-  imgRef: React.RefObject<HTMLImageElement>;
+  imgRef: React.RefObject<HTMLImageElement | null>;
   recalc: () => void;
   showBoxes: boolean;
   activeLineId: number | null;

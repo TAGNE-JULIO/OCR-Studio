@@ -86,8 +86,10 @@ export default function App() {
       const form = new FormData();
       form.append('file', file);
       form.append('pretraitement', 'true');
-      const baseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/analyze`, { method: 'POST', body: form });
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL 
+        ? `${process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '')}/api/analyze` 
+        : '/api/analyze';
+      const res = await fetch(apiUrl, { method: 'POST', body: form });
       if (!res.ok) throw new Error(`Erreur serveur : ${res.status}`);
       const data: ResultatOCR = await res.json();
       if (!data.success) throw new Error('Échec de la reconnaissance IA.');
