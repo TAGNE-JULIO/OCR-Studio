@@ -183,7 +183,6 @@ export default function App() {
 
   // Zoom / Pan
   const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
     const factor = e.deltaY < 0 ? 1.15 : 0.85;
     setZoom(z => Math.min(8, Math.max(0.2, z * factor)));
   };
