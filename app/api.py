@@ -17,7 +17,10 @@ if sys.stderr.encoding != 'utf-8':
 
 # OpenCV multithread
 cv2.setNumThreads(os.cpu_count() or 4)
-cv2.setUseOptimized(True)
+# Ajouter le dossier courant au PYTHONPATH pour les imports internes
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
