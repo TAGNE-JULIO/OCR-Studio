@@ -4,7 +4,7 @@ import { RichRenderer } from '../RichRenderer';
 import { ImageDocument } from '../../types';
 import { 
   ArrowLeft, Edit3, Sparkles, FileDown, FileSpreadsheet, 
-  RotateCcw, Check, Eye, Layers
+  RotateCcw, Check, Eye, Layers, Loader2, AlertTriangle
 } from 'lucide-react';
 
 interface ReviewScreenProps {
@@ -45,8 +45,15 @@ export function ReviewScreen({
   const resultat = currentDoc?.resultat ?? null;
   const step = currentDoc?.step ?? 'empty';
   const imageUrl = currentDoc?.url ?? null;
+  const errMsg = currentDoc?.errMsg ?? null;
 
-  const textContent = resultat ? resultat.texte_complet : DEFAULT_MANUSCRIPT_TEXT;
+  const textContent = resultat 
+    ? resultat.texte_complet 
+    : (step === 'loading' 
+        ? "⏳ Analyse IA en cours par le serveur FastAPI... Veuillez patienter quelques secondes." 
+        : (step === 'error' 
+            ? `⚠️ Échec de la communication avec l'API :\n${errMsg || 'Erreur inconnue'}\n\nVérifiez que la variable NEXT_PUBLIC_API_URL est bien configurée dans Vercel avec l'URL de votre backend FastAPI.` 
+            : DEFAULT_MANUSCRIPT_TEXT));
   const wordsCount = useMemo(() => textContent.trim().split(/\s+/).filter(Boolean).length, [textContent]);
 
   const boxStyle = (boite: number[][] | null) => {
@@ -115,10 +122,31 @@ export function ReviewScreen({
 
         {/* 3 Métriques Document */}
         <div className="grid gap-4 sm:grid-cols-3">
-          <Metric label="Niveau de confiance" value={resultat ? `${Math.round(resultat.confiance_moyenne * 100)}%` : "98,4 %"} note="Haute fidélité contextuelle" />
+          <Metric label="Niveau de confiance" value={resultat ? `${Math.round(resultat.confiance_moyenne * 100)}%` : (step === 'loading' ? 'Calcul...' : (step === 'error' ? 'Échec' : '98,4 %'))} note="Haute fidélité contextuelle" />
           <Metric label="Langue détectée" value="Français & Maths" note="Reconnaissance multimodale" />
-          <Metric label="Éléments structurés" value={resultat?.matrice?.length ? `${resultat.matrice.length} lignes` : "Parfait"} note="Tableaux & LaTeX formatés" />
+          <Metric label="Éléments structurés" value={resultat?.matrice?.length ? `${resultat.matrice.length} lignes` : (step === 'done' ? 'Parfait' : 'En attente')} note="Tableaux & LaTeX formatés" />
         </div>
+
+        {/* Bannière d'état en direct */}
+        {step === 'loading' && (
+          <div className="flex items-center gap-3 rounded-2xl border border-[#7c5cfc]/50 bg-[#7c5cfc]/15 px-6 py-4 text-sm text-[#a98bff] shadow-[0_0_30px_rgba(124,92,252,0.25)] animate-pulse">
+            <Loader2 className="size-5 animate-spin text-[#22d4fd]" />
+            <span><strong>Analyse FastAPI en direct :</strong> Prétraitement OpenCV, détection spatiale et transcription IA GPT-4o en cours...</span>
+          </div>
+        )}
+
+        {step === 'error' && (
+          <div className="flex items-start gap-3 rounded-2xl border border-rose-500/50 bg-rose-950/30 px-6 py-4 text-sm text-rose-300 shadow-[0_0_30px_rgba(244,63,94,0.2)]">
+            <AlertTriangle className="size-5 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <strong className="block text-white font-bold">Impossible de joindre l'API FastAPI</strong>
+              <p className="text-xs text-rose-200 mt-1 font-mono">{errMsg}</p>
+              <p className="text-xs text-[#8892b0] mt-2">
+                Astuce : Dans les paramètres de votre projet Frontend sur Vercel, vérifiez que la variable d'environnement <strong>NEXT_PUBLIC_API_URL</strong> contient bien l'adresse de votre backend (ex: <code>https://ocr-studio-api.vercel.app</code>).
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── CARTE DOUBLE PANNEAU EN VERRE NÉON ── */}
         <div className={`grid overflow-hidden rounded-3xl card-glass gradient-border shadow-[0_20px_50px_rgba(0,0,0,0.6)] ${compare ? "xl:grid-cols-2" : ""}`}>
