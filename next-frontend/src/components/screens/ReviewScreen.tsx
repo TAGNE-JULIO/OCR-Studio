@@ -1,10 +1,14 @@
-import React, { useMemo } from 'react';
+'use client';
+
+import React, { useMemo, useState } from 'react';
 import { Metric } from '../ui/Metric';
 import { RichRenderer } from '../RichRenderer';
 import { ImageDocument } from '../../types';
+import { useI18n } from '../../context/I18nContext';
 import { 
   ArrowLeft, Edit3, Sparkles, FileDown, FileSpreadsheet, 
-  RotateCcw, Check, Eye, Layers, Loader2, AlertTriangle
+  RotateCcw, Check, Layers, Loader2, AlertTriangle, 
+  Copy, ZoomIn, ZoomOut, Maximize2, FileText, CheckCheck
 } from 'lucide-react';
 
 interface ReviewScreenProps {
@@ -18,6 +22,8 @@ interface ReviewScreenProps {
   onExportExcel: () => void;
   onExportPdf: () => void;
   zoom: number;
+  setZoom: React.Dispatch<React.SetStateAction<number>>;
+  setPan: React.Dispatch<React.SetStateAction<{ x: number, y: number }>>;
   pan: { x: number, y: number };
   scale: { x: number, y: number };
   onWheel: (e: React.WheelEvent) => void;
@@ -38,10 +44,14 @@ interface ReviewScreenProps {
 
 export function ReviewScreen({
   currentDoc, fileName, compare, setCompare, onBack, onScanAgain, onExportWord, onExportExcel, onExportPdf,
-  zoom, pan, scale, onWheel, onMouseDown, onMouseMove, onMouseUp, imgRef, recalc,
+  zoom, setZoom, setPan, pan, scale, onWheel, onMouseDown, onMouseMove, onMouseUp, imgRef, recalc,
   showBoxes, activeLineId, setActiveLineId, saved, setSaved, richView, setRichView, updateFullText
 }: ReviewScreenProps) {
-  const DEFAULT_MANUSCRIPT_TEXT = `Réunion produit — 6 septembre\n\nÀ retenir pour la prochaine version :\n• simplifier l'import de documents\n• afficher les mots à vérifier dès la lecture\n• permettre l'export vers Notion et Google Docs\n\nDécision : tester le nouveau parcours avec 8 personnes lundi.`;
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+
+  const DEFAULT_MANUSCRIPT_TEXT = `Réunion produit — 6 septembre\n\nÀ retenir pour la prochaine version :\n• simplifier l'import de documents\n• afficher les mots à vérifier dès la lecture\n• permettre l'export vers Notion et Google Docs\n\nFormule d'optimisation :\n$$ f(x) = \\sum_{i=1}^{n} w_i \\cdot \\sigma(x_i) $$\n\nDécision : tester le nouveau parcours avec 8 personnes lundi.`;
+  
   const resultat = currentDoc?.resultat ?? null;
   const step = currentDoc?.step ?? 'empty';
   const imageUrl = currentDoc?.url ?? null;
@@ -50,11 +60,26 @@ export function ReviewScreen({
   const textContent = resultat 
     ? resultat.texte_complet 
     : (step === 'loading' 
-        ? "⏳ Analyse IA en cours par le serveur FastAPI... Veuillez patienter quelques secondes." 
+        ? t.loadingApiMsg
         : (step === 'error' 
-            ? `⚠️ Échec de la communication avec l'API :\n${errMsg || 'Erreur inconnue'}\n\nVérifiez que la variable NEXT_PUBLIC_API_URL est bien configurée dans Vercel avec l'URL de votre backend FastAPI.` 
+            ? `⚠️ ${t.errorApiTitle} :\n${errMsg || 'Erreur inconnue'}\n\n${t.errorApiTip}` 
             : DEFAULT_MANUSCRIPT_TEXT));
+            
   const wordsCount = useMemo(() => textContent.trim().split(/\s+/).filter(Boolean).length, [textContent]);
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(textContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleZoomIn = () => setZoom(z => Math.min(6, +(z + 0.25).toFixed(2)));
+  const handleZoomOut = () => setZoom(z => Math.max(0.4, +(z - 0.25).toFixed(2)));
+  const handleZoomReset = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
 
   const boxStyle = (boite: number[][] | null) => {
     if (!boite || boite.length < 4) return null;
@@ -73,104 +98,138 @@ export function ReviewScreen({
   };
 
   return (
-    <section className="flex-1 min-w-0 px-6 py-8 sm:px-10 sm:py-10">
+    <section className="flex-1 min-w-0 px-4 py-6 sm:px-10 sm:py-10 transition-colors">
       <div className="mx-auto max-w-[1380px] space-y-7">
         
-        {/* Bouton Retour élégant */}
+        {/* Back Button */}
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-2 text-sm font-mono font-bold text-[#22d4fd] hover:text-[#a98bff] hover:underline transition cursor-pointer"
+          className="inline-flex items-center gap-2 text-sm font-mono font-bold text-indigo-600 dark:text-[#22d4fd] hover:text-indigo-800 dark:hover:text-[#a98bff] hover:underline transition cursor-pointer"
         >
           <ArrowLeft className="size-4" />
-          <span>Retour à la vue d'ensemble</span>
+          <span>{t.btnBack}</span>
         </button>
 
-        {/* Ligne de Titres et Switcher Segmenté */}
+        {/* Title and Segmented Switcher */}
         <div className="flex flex-wrap items-end justify-between gap-6 pb-2">
           <div className="space-y-1.5">
             <div className="section-tag">
-              <Sparkles className="size-3 text-[#22d4fd]" />
-              <span>Analyse OCR Précise</span>
+              <Sparkles className="size-3 text-indigo-500 dark:text-[#22d4fd]" />
+              <span>{t.reviewTag}</span>
             </div>
-            <h1 className="font-display text-2xl sm:text-4xl font-bold tracking-tight text-white">
+            <h1 className="font-display text-2xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white transition-colors">
               {fileName}
             </h1>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Segmented Switcher [Éditer] [Comparer] */}
-            <div className="flex rounded-xl border border-[#1e2640] bg-[#0f1422] p-1 text-xs font-bold shadow-inner">
+            {/* Segmented Switcher [Édition simple] [Vue comparative] */}
+            <div className="flex rounded-xl border border-slate-200 dark:border-[#1e2640] bg-slate-100 dark:bg-[#0f1422] p-1 text-xs font-bold shadow-inner">
               <button
                 onClick={() => setCompare(false)}
                 className={`rounded-lg px-4 py-2 transition-all cursor-pointer ${
-                  !compare ? "btn-primary text-white shadow-sm" : "text-[#8892b0] hover:text-white"
+                  !compare ? "btn-primary text-white shadow-xs" : "text-slate-600 dark:text-[#8892b0] hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                Édition simple
+                {t.modeSimpleEdit}
               </button>
               <button
                 onClick={() => setCompare(true)}
                 className={`rounded-lg px-4 py-2 transition-all cursor-pointer ${
-                  compare ? "btn-primary text-white shadow-sm" : "text-[#8892b0] hover:text-white"
+                  compare ? "btn-primary text-white shadow-xs" : "text-slate-600 dark:text-[#8892b0] hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                Vue comparative
+                {t.modeCompare}
               </button>
             </div>
           </div>
         </div>
 
-        {/* 3 Métriques Document */}
+        {/* 3 Metrics */}
         <div className="grid gap-4 sm:grid-cols-3">
-          <Metric label="Niveau de confiance" value={resultat ? `${Math.round(resultat.confiance_moyenne * 100)}%` : (step === 'loading' ? 'Calcul...' : (step === 'error' ? 'Échec' : '98,4 %'))} note="Haute fidélité contextuelle" />
-          <Metric label="Langue détectée" value="Français & Maths" note="Reconnaissance multimodale" />
-          <Metric label="Éléments structurés" value={resultat?.matrice?.length ? `${resultat.matrice.length} lignes` : (step === 'done' ? 'Parfait' : 'En attente')} note="Tableaux & LaTeX formatés" />
+          <Metric 
+            label={t.metricConfidence} 
+            value={resultat ? `${Math.round(resultat.confiance_moyenne * 100)}%` : (step === 'loading' ? '...' : (step === 'error' ? '0%' : '98,4 %'))} 
+            note={t.metricConfidenceNote} 
+          />
+          <Metric 
+            label={t.metricLanguage} 
+            value={t.metricLanguageValue} 
+            note={t.metricLanguageNote} 
+          />
+          <Metric 
+            label={t.metricStructured} 
+            value={resultat?.matrice?.length ? `${resultat.matrice.length} lines` : (step === 'done' ? 'Formaté' : 'Auto')} 
+            note={t.metricStructuredNote} 
+          />
         </div>
 
-        {/* Bannière d'état en direct */}
+        {/* Live Status Banner */}
         {step === 'loading' && (
-          <div className="flex items-center gap-3 rounded-2xl border border-[#7c5cfc]/50 bg-[#7c5cfc]/15 px-6 py-4 text-sm text-[#a98bff] shadow-[0_0_30px_rgba(124,92,252,0.25)] animate-pulse">
-            <Loader2 className="size-5 animate-spin text-[#22d4fd]" />
-            <span><strong>Analyse FastAPI en direct :</strong> Prétraitement OpenCV, détection spatiale et transcription IA GPT-4o en cours...</span>
+          <div className="flex items-center gap-3 rounded-2xl border border-indigo-300 dark:border-[#7c5cfc]/50 bg-indigo-50 dark:bg-[#7c5cfc]/15 px-6 py-4 text-sm text-indigo-700 dark:text-[#a98bff] shadow-sm dark:shadow-[0_0_30px_rgba(124,92,252,0.25)] animate-pulse">
+            <Loader2 className="size-5 animate-spin text-cyan-600 dark:text-[#22d4fd]" />
+            <span><strong>FastAPI Analysis:</strong> {t.loadingApiMsg}</span>
           </div>
         )}
 
         {step === 'error' && (
-          <div className="flex items-start gap-3 rounded-2xl border border-rose-500/50 bg-rose-950/30 px-6 py-4 text-sm text-rose-300 shadow-[0_0_30px_rgba(244,63,94,0.2)]">
-            <AlertTriangle className="size-5 text-rose-400 shrink-0 mt-0.5" />
-            <div>
-              <strong className="block text-white font-bold">Impossible de joindre l'API FastAPI</strong>
-              <p className="text-xs text-rose-200 mt-1 font-mono">{errMsg}</p>
-              <p className="text-xs text-[#8892b0] mt-2">
-                Astuce : Dans les paramètres de votre projet Frontend sur Vercel, vérifiez que la variable d'environnement <strong>NEXT_PUBLIC_API_URL</strong> contient bien l'adresse de votre backend (ex: <code>https://ocr-studio-api.vercel.app</code>).
+          <div className="flex items-start gap-3 rounded-2xl border border-rose-300 dark:border-rose-500/50 bg-rose-50 dark:bg-rose-950/30 px-6 py-4 text-sm text-rose-800 dark:text-rose-300 shadow-sm">
+            <AlertTriangle className="size-5 text-rose-500 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <strong className="block font-bold">{t.errorApiTitle}</strong>
+              <p className="text-xs font-mono">{errMsg}</p>
+              <p className="text-xs text-slate-500 dark:text-[#8892b0] pt-1">
+                {t.errorApiTip}
               </p>
+              <button
+                onClick={onScanAgain}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>{t.btnRetry}</span>
+              </button>
             </div>
           </div>
         )}
 
-        {/* ── CARTE DOUBLE PANNEAU EN VERRE NÉON ── */}
-        <div className={`grid overflow-hidden rounded-3xl card-glass gradient-border shadow-[0_20px_50px_rgba(0,0,0,0.6)] ${compare ? "xl:grid-cols-2" : ""}`}>
+        {/* Dual Panel Studio Card */}
+        <div className={`grid overflow-hidden rounded-3xl card-glass gradient-border shadow-lg dark:shadow-[0_20px_50px_rgba(0,0,0,0.6)] ${compare ? "xl:grid-cols-2" : ""}`}>
           
-          {/* Panneau de Gauche : Document Source */}
+          {/* Left Panel: Original Source Document */}
           {compare && (
-            <div className="border-b border-[#1e2640] xl:border-b-0 xl:border-r flex flex-col min-h-[580px]">
-              <div className="flex justify-between items-center border-b border-[#1e2640] bg-[#131928]/60 px-6 py-4">
+            <div className="border-b border-slate-200 dark:border-[#1e2640] xl:border-b-0 xl:border-r flex flex-col min-h-[580px]">
+              <div className="flex justify-between items-center border-b border-slate-200 dark:border-[#1e2640] bg-slate-50/80 dark:bg-[#131928]/60 px-6 py-4">
                 <div className="flex items-center gap-2">
-                  <Layers className="size-4 text-[#7c5cfc]" />
-                  <span className="font-display text-sm font-bold text-white">Document source original</span>
+                  <Layers className="size-4 text-indigo-500 dark:text-[#7c5cfc]" />
+                  <span className="font-display text-sm font-bold text-slate-900 dark:text-white">{t.sourceDocTitle}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-xs font-semibold text-[#22d4fd] bg-[#22d4fd]/10 border border-[#22d4fd]/30 px-2.5 py-1 rounded-md">PAGE 1 / 1</span>
+                  {/* Zoom Controls Toolbar */}
+                  <div className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-[#1e2640] bg-white dark:bg-[#0c101d] px-1.5 py-1 text-xs">
+                    <button onClick={handleZoomOut} title={t.zoomOut} className="p-1 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-cyan-300">
+                      <ZoomOut className="size-3.5" />
+                    </button>
+                    <span className="font-mono text-[11px] px-1 font-semibold text-slate-700 dark:text-slate-200">
+                      {Math.round(zoom * 100)}%
+                    </span>
+                    <button onClick={handleZoomIn} title={t.zoomIn} className="p-1 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-cyan-300">
+                      <ZoomIn className="size-3.5" />
+                    </button>
+                    <button onClick={handleZoomReset} title={t.zoomReset} className="p-1 border-l border-slate-200 dark:border-[#1e2640] text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-cyan-300 ml-0.5">
+                      <Maximize2 className="size-3.5" />
+                    </button>
+                  </div>
+
                   <button
                     onClick={onScanAgain}
-                    className="font-mono text-xs font-bold text-[#a98bff] hover:text-[#22d4fd] hover:underline cursor-pointer transition"
+                    className="font-mono text-xs font-bold text-indigo-600 dark:text-[#a98bff] hover:text-cyan-600 dark:hover:text-[#22d4fd] hover:underline cursor-pointer transition"
                   >
-                    Scanner à nouveau
+                    {t.btnScanAgain}
                   </button>
                 </div>
               </div>
 
-              {/* Rendu Image Source avec Canevas Blueprint Dark */}
+              {/* Source Image Canvas */}
               <div className="relative flex-1 blueprint-grid p-6 sm:p-8 flex items-center justify-center overflow-hidden min-h-[480px]">
                 {imageUrl ? (
                   <div
@@ -186,7 +245,7 @@ export function ReviewScreen({
                       src={imageUrl}
                       alt="Document source"
                       onLoad={recalc}
-                      className="mx-auto min-h-[380px] max-h-[520px] max-w-full object-contain shadow-2xl rounded-xl border border-[#1e2640]"
+                      className="mx-auto min-h-[380px] max-h-[520px] max-w-full object-contain shadow-2xl rounded-xl border border-slate-200 dark:border-[#1e2640]"
                     />
 
                     {showBoxes && step === 'done' && resultat && (
@@ -203,7 +262,7 @@ export function ReviewScreen({
                               onMouseEnter={() => setActiveLineId(l.id)}
                               onMouseLeave={() => setActiveLineId(null)}
                               onClick={() => setActiveLineId(l.id)}
-                              title={`Ligne ${l.id + 1} (${Math.round(l.confiance * 100)}% certitude)`}
+                              title={`Ligne ${l.id + 1} (${Math.round(l.confiance * 100)}%)`}
                             />
                           );
                         })}
@@ -211,19 +270,19 @@ export function ReviewScreen({
                     )}
                   </div>
                 ) : (
-                  <article className="mx-auto min-h-[400px] max-w-[460px] -rotate-1 bg-[#0f1422] p-9 shadow-2xl rounded-xl border border-[#1e2640] text-[#e8eaf2]">
-                    <p className="border-b border-[#7c5cfc]/30 pb-3 font-display text-2xl italic text-[#a98bff]">
+                  <article className="mx-auto min-h-[400px] max-w-[460px] -rotate-1 bg-white dark:bg-[#0f1422] p-9 shadow-2xl rounded-xl border border-slate-200 dark:border-[#1e2640] text-slate-800 dark:text-[#e8eaf2]">
+                    <p className="border-b border-indigo-200 dark:border-[#7c5cfc]/30 pb-3 font-display text-2xl italic text-indigo-600 dark:text-[#a98bff]">
                       Réunion produit — 6 septembre
                     </p>
-                    <p className="mt-8 font-serif text-lg leading-8 text-[#8892b0]">
+                    <p className="mt-8 font-serif text-lg leading-8 text-slate-600 dark:text-[#8892b0]">
                       À retenir pour la prochaine version :
                     </p>
-                    <p className="mt-4 font-serif text-lg leading-8 text-[#d0d7e5]">
+                    <p className="mt-4 font-serif text-lg leading-8 text-slate-800 dark:text-[#d0d7e5]">
                       — simplifier l'import de documents<br/>
                       — afficher les mots à vérifier dès la lecture<br/>
                       — permettre l'export vers Notion et Google Docs
                     </p>
-                    <p className="mt-8 font-serif text-lg leading-8 text-[#22d4fd]">
+                    <p className="mt-8 font-serif text-lg leading-8 text-cyan-600 dark:text-[#22d4fd]">
                       Décision : tester le nouveau parcours avec 8 personnes lundi.
                     </p>
                   </article>
@@ -232,50 +291,70 @@ export function ReviewScreen({
             </div>
           )}
 
-          {/* Panneau de Droite : Texte Reconnu */}
-          <div className="flex flex-col min-h-[580px] bg-[#0c101d]/60">
-            <div className="flex items-center justify-between border-b border-[#1e2640] bg-[#131928]/60 px-6 py-3.5">
+          {/* Right Panel: Recognized Transcription */}
+          <div className="flex flex-col min-h-[580px] bg-white/60 dark:bg-[#0c101d]/60">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#1e2640] bg-slate-50/80 dark:bg-[#131928]/60 px-6 py-3.5">
               <div className="flex items-center gap-3">
-                <span className="font-display text-sm font-bold text-white">Transcription IA</span>
-                <div className="flex items-center rounded-xl border border-[#1e2640] bg-[#080b14] p-1">
+                <span className="font-display text-sm font-bold text-slate-900 dark:text-white">{t.transcriptionTitle}</span>
+                <div className="flex items-center rounded-xl border border-slate-200 dark:border-[#1e2640] bg-slate-100 dark:bg-[#080b14] p-1">
                   <button
                     onClick={() => setRichView(false)}
-                    title="Édition texte brut"
+                    title={t.tabRawEditor}
                     className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                       !richView
                         ? 'btn-primary text-white shadow-xs'
-                        : 'text-[#8892b0] hover:text-white'
+                        : 'text-slate-600 dark:text-[#8892b0] hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
                     <Edit3 className="size-3.5" />
-                    <span>Éditeur Brut</span>
+                    <span>{t.tabRawEditor}</span>
                   </button>
                   <button
                     onClick={() => setRichView(true)}
-                    title="Rendu riche : tableaux, formules, graphiques"
+                    title={t.tabStructuredView}
                     className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                       richView
                         ? 'btn-primary text-white shadow-xs'
-                        : 'text-[#8892b0] hover:text-white'
+                        : 'text-slate-600 dark:text-[#8892b0] hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
-                    <Sparkles className="size-3.5 text-[#22d4fd]" />
-                    <span>Rendu Structuré</span>
+                    <Sparkles className="size-3.5 text-cyan-500 dark:text-[#22d4fd]" />
+                    <span>{t.tabStructuredView}</span>
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
+                {/* Copy Button */}
+                <button
+                  onClick={copyToClipboard}
+                  title={copied ? t.btnCopied : t.btnCopy}
+                  className="btn-ghost flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-mono text-xs font-bold text-slate-700 dark:text-[#e8eaf2] transition cursor-pointer"
+                >
+                  {copied ? (
+                    <>
+                      <CheckCheck className="size-3.5 text-emerald-500" />
+                      <span className="text-emerald-600 dark:text-emerald-400">{t.btnCopied}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="size-3.5 text-slate-500 dark:text-[#22d4fd]" />
+                      <span>{t.btnCopy}</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Validate Button */}
                 <button
                   onClick={() => setSaved(!saved)}
-                  className={`flex items-center gap-1.5 rounded-xl px-4 py-1.5 font-mono text-xs font-bold transition cursor-pointer ${
+                  className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 font-mono text-xs font-bold transition cursor-pointer ${
                     saved 
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.3)]" 
-                      : "bg-[#7c5cfc]/20 text-[#a98bff] border border-[#7c5cfc]/40 hover:bg-[#7c5cfc]/30"
+                      ? "bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/40 shadow-xs" 
+                      : "bg-indigo-50 dark:bg-[#7c5cfc]/20 text-indigo-600 dark:text-[#a98bff] border border-indigo-200 dark:border-[#7c5cfc]/40 hover:bg-indigo-100 dark:hover:bg-[#7c5cfc]/30"
                   }`}
                 >
                   <Check className="size-3.5" />
-                  <span>{saved ? "Texte validé" : "Valider le texte"}</span>
+                  <span>{saved ? t.btnValidated : t.btnValidate}</span>
                 </button>
               </div>
             </div>
@@ -283,17 +362,17 @@ export function ReviewScreen({
             <div className="p-6 sm:p-8 flex-1 flex flex-col justify-between overflow-auto">
               <div className="flex-1 space-y-4">
                 {!saved && !richView && (
-                  <div className="rounded-xl bg-[#7c5cfc]/10 border border-[#7c5cfc]/30 px-4 py-3 text-xs text-[#a98bff] flex items-center justify-between">
-                    <span>💡 <strong>Mode édition direct :</strong> Modifiez librement le texte. Les formules $\LaTeX$ et tableaux Markdown s'actualisent en direct.</span>
+                  <div className="rounded-xl bg-indigo-50 dark:bg-[#7c5cfc]/10 border border-indigo-200 dark:border-[#7c5cfc]/30 px-4 py-3 text-xs text-indigo-700 dark:text-[#a98bff] flex items-center justify-between">
+                    <span>💡 {t.editorTip}</span>
                   </div>
                 )}
 
                 {richView ? (
-                  <div className="min-h-[380px] p-5 rounded-2xl bg-[#080b14]/70 border border-[#1e2640] overflow-y-auto">
+                  <div className="min-h-[380px] p-5 rounded-2xl bg-white dark:bg-[#080b14]/70 border border-slate-200 dark:border-[#1e2640] overflow-y-auto">
                     {textContent.trim() ? (
                       <RichRenderer content={textContent} />
                     ) : (
-                      <p className="text-[#8892b0] italic text-sm font-mono">Aucun contenu disponible. Analysez un document.</p>
+                      <p className="text-slate-400 dark:text-[#8892b0] italic text-sm font-mono">{t.emptyContentNote}</p>
                     )}
                   </div>
                 ) : (
@@ -301,46 +380,46 @@ export function ReviewScreen({
                     value={textContent}
                     onChange={event => updateFullText(event.target.value)}
                     aria-label="Texte reconnu"
-                    className="min-h-[380px] w-full resize-none font-mono text-[14px] leading-relaxed text-[#c8d4e8] p-5 rounded-2xl bg-[#080b14]/70 border border-[#1e2640] focus:border-[#7c5cfc] focus:bg-[#080b14] focus:outline-none transition-all shadow-inner"
+                    className="min-h-[380px] w-full resize-none font-mono text-[14px] leading-relaxed text-slate-800 dark:text-[#c8d4e8] p-5 rounded-2xl bg-white dark:bg-[#080b14]/70 border border-slate-200 dark:border-[#1e2640] focus:border-indigo-500 dark:focus:border-[#7c5cfc] focus:outline-none transition-all shadow-inner"
                   />
                 )}
               </div>
 
-              {/* Barre de statistiques et exports au bas de feuille */}
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-[#1e2640] pt-5 text-xs text-[#8892b0]">
+              {/* Bottom Bar: Word count & Exports */}
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-slate-200 dark:border-[#1e2640] pt-5 text-xs text-slate-500 dark:text-[#8892b0]">
                 <div className="flex items-center gap-2 font-mono">
-                  <span className="font-bold text-white">{wordsCount}</span> mots
+                  <span className="font-bold text-slate-900 dark:text-white">{wordsCount}</span> {t.wordsCount}
                   <span>·</span>
-                  <span className="font-bold text-white">{textContent.length}</span> caractères
+                  <span className="font-bold text-slate-900 dark:text-white">{textContent.length}</span> {t.charsCount}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
                   <button
                     onClick={onExportWord}
-                    className="btn-ghost flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 font-mono text-xs font-bold text-[#e8eaf2] hover:border-[#7c5cfc] transition cursor-pointer"
+                    className="btn-ghost flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 font-mono text-xs font-bold text-slate-700 dark:text-[#e8eaf2] transition cursor-pointer"
                   >
-                    <FileDown className="size-3.5 text-[#22d4fd]" />
-                    <span>Word (.doc)</span>
+                    <FileDown className="size-3.5 text-indigo-500 dark:text-[#22d4fd]" />
+                    <span>{t.btnExportWord}</span>
                   </button>
                   <button
                     onClick={onExportExcel}
-                    className="btn-ghost flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 font-mono text-xs font-bold text-[#e8eaf2] hover:border-[#7c5cfc] transition cursor-pointer"
+                    className="btn-ghost flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 font-mono text-xs font-bold text-slate-700 dark:text-[#e8eaf2] transition cursor-pointer"
                   >
-                    <FileSpreadsheet className="size-3.5 text-emerald-400" />
-                    <span>Excel (.xlsx)</span>
+                    <FileSpreadsheet className="size-3.5 text-emerald-500 dark:text-emerald-400" />
+                    <span>{t.btnExportExcel}</span>
                   </button>
                   <button
                     onClick={onExportPdf}
                     className="btn-primary flex items-center gap-1.5 rounded-xl px-4 py-1.5 font-mono text-xs font-bold text-white shadow-md transition cursor-pointer"
                   >
                     <FileDown className="size-3.5" />
-                    <span>PDF Pro</span>
+                    <span>{t.btnExportPdf}</span>
                   </button>
                   <button
                     onClick={() => setSaved(false)}
-                    className="rounded-lg px-2.5 py-1.5 font-mono text-xs font-bold text-[#8892b0] hover:text-[#22d4fd] hover:underline transition cursor-pointer"
+                    className="rounded-lg px-2.5 py-1.5 font-mono text-xs font-bold text-slate-500 dark:text-[#8892b0] hover:text-indigo-600 dark:hover:text-[#22d4fd] hover:underline transition cursor-pointer"
                   >
-                    Réinitialiser
+                    {t.btnReset}
                   </button>
                 </div>
               </div>

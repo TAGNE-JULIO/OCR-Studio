@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { Providers } from "../components/Providers";
 
 export const metadata: Metadata = {
   title: "OCR Studio Pro — Transcription Intelligente de Manuscrits",
@@ -30,8 +31,10 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"
         />
       </head>
-      <body className="min-h-screen bg-[#080b14] text-[#e8eaf2] mesh-bg antialiased selection:bg-[#7c5cfc]/30 selection:text-[#22d4fd]">
-        {children}
+      <body className="min-h-screen mesh-bg antialiased selection:bg-indigo-500/30 dark:selection:bg-[#7c5cfc]/30 selection:text-indigo-600 dark:selection:text-[#22d4fd]">
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );

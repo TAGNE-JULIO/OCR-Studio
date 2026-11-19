@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useMemo } from 'react';
 import { marked } from 'marked';
 import katex from 'katex';
@@ -21,7 +23,7 @@ export function RichRenderer({ content }: RichRendererProps) {
         });
         return `<div class="katex-block my-4">${rendered}</div>`;
       } catch {
-        return `<div class="katex-block my-4 text-red-500">Formule invalide: ${formula}</div>`;
+        return `<div class="katex-block my-4 text-red-500 font-mono text-xs">Formule invalide: ${formula}</div>`;
       }
     });
 
@@ -35,22 +37,22 @@ export function RichRenderer({ content }: RichRendererProps) {
         });
         return `<span class="katex-inline">${rendered}</span>`;
       } catch {
-        return `<span class="text-red-500">$${formula}$</span>`;
+        return `<span class="text-red-500 font-mono text-xs">$${formula}$</span>`;
       }
     });
 
     // 3. Detect and format [GRAPHIQUE: ...] blocks
     processed = processed.replace(/\[GRAPHIQUE\s*:\s*([^\]]+)\]/gi, (_m, type) => {
-      return `<div class="graphique-block my-3 rounded-xl border-2 border-[#bcd0e7] bg-[#f0f7ff] p-4 flex items-center gap-3">
-        <span class="text-2xl">\ud83d\udcc8</span>
+      return `<div class="graphique-block my-3 rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4 flex items-center gap-3">
+        <span class="text-2xl">📈</span>
         <div>
-          <p class="font-bold text-[#083e8c] text-sm">Graphique détecté</p>
-          <p class="text-[#315b89] text-sm">${type.trim()}</p>
+          <p class="font-bold text-indigo-600 dark:text-cyan-300 text-sm">Graphique détecté</p>
+          <p class="text-slate-600 dark:text-slate-300 text-sm">${type.trim()}</p>
         </div>
       </div>`;
     });
 
-    // 4. Configure marked for clean rendering
+    // 4. Configure marked for clean GFM rendering
     marked.setOptions({
       breaks: true,
       gfm: true,
@@ -63,13 +65,8 @@ export function RichRenderer({ content }: RichRendererProps) {
 
   return (
     <div
-      className="rich-content min-h-[320px] overflow-y-auto"
+      className="rich-content min-h-[320px] overflow-y-auto text-[15px] leading-relaxed transition-colors"
       dangerouslySetInnerHTML={{ __html: htmlContent }}
-      style={{
-        lineHeight: 1.75,
-        color: '#183d6b',
-        fontSize: '15px',
-      }}
     />
   );
 }

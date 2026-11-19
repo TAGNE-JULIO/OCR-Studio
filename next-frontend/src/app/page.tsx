@@ -14,11 +14,11 @@ import { ImageDocument, ScreenView, InputMode, ResultatOCR } from '../types';
 const RECENT_DOCUMENTS_LIST = [
   { id: 1, title: "Notes — réunion produit", date: "Aujourd’hui, 10:42", pages: "2 pages", score: "98,4 %" },
   { id: 2, title: "Carnet de recherche", date: "Hier, 16:20", pages: "8 pages", score: "96,8 %" },
-  { id: 3, title: "Liste de courses & Notes", date: "12 juin, 09:14", pages: "1 page", score: "99,1 %" },
+  { id: 3, title: "Liste de courses & Formules", date: "12 juin, 09:14", pages: "1 page", score: "99,1 %" },
 ];
 
 export default function App() {
-  // Navigation & Écrans
+  // Navigation & Screens
   const [screen, setScreen] = useState<ScreenView>("home");
   const [images, setImages] = useState<ImageDocument[]>([]);
   const [activeDocIndex, setActiveDocIndex] = useState(0);
@@ -38,18 +38,18 @@ export default function App() {
   const [scale, setScale] = useState({ x: 1, y: 1 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Caméra WebRTC
+  // WebRTC Camera
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [camStream, setCamStream] = useState<MediaStream | null>(null);
   const [camFront, setCamFront] = useState(false);
 
-  // Document courant
+  // Active Document
   const currentDoc = images[activeDocIndex] ?? null;
   const resultat = currentDoc?.resultat ?? null;
   const fileName = currentDoc?.name ?? "Notes — réunion produit";
 
-  // Recalcul échelle
+  // Recalculate Bounding Box Scale
   const recalc = useCallback(() => {
     if (!imgRef.current || !resultat) return;
     const img = imgRef.current;
@@ -80,19 +80,25 @@ export default function App() {
     setActiveDocIndex(0);
     setScreen("review");
     setSaved(false);
-    setZoom(1); setPan({ x: 0, y: 0 });
+    setZoom(1); 
+    setPan({ x: 0, y: 0 });
 
     try {
       const form = new FormData();
       form.append('file', file);
       form.append('pretraitement', 'true');
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL 
-        ? `${process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '')}/api/analyze` 
-        : '/api/analyze';
+      
+      const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://ocr-studio-api.vercel.app';
+      const apiUrl = `${rawApiUrl.replace(/\/+$/, '')}/api/analyze`;
+      
       const res = await fetch(apiUrl, { method: 'POST', body: form });
-      if (!res.ok) throw new Error(`Erreur serveur : ${res.status}`);
+      if (!res.ok) {
+        throw new Error(`Erreur serveur (${res.status} ${res.statusText})`);
+      }
       const data: ResultatOCR = await res.json();
-      if (!data.success) throw new Error('Échec de la reconnaissance IA.');
+      if (!data.success) {
+        throw new Error((data as any).error || 'Échec de la reconnaissance IA.');
+      }
 
       setImages(prev => prev.map(img => 
         img.id === id ? { ...img, step: 'done', resultat: data } : img
@@ -109,6 +115,10 @@ export default function App() {
     const files = e.target.files;
     if (files) Array.from(files).forEach(f => processFile(f));
     e.target.value = '';
+  };
+
+  const onDropFiles = (files: FileList) => {
+    Array.from(files).forEach(f => processFile(f));
   };
 
   const loadSampleImage = async () => {
@@ -131,7 +141,7 @@ export default function App() {
     }
   };
 
-  // Caméra WebRTC
+  // WebRTC Camera Controls
   const startCamera = async (front = false) => {
     try {
       if (camStream) camStream.getTracks().forEach(t => t.stop());
@@ -181,7 +191,7 @@ export default function App() {
     return () => stopCamera();
   }, [inputMode, camFront]);
 
-  // Zoom / Pan
+  // Zoom / Pan Handlers
   const onWheel = (e: React.WheelEvent) => {
     const factor = e.deltaY < 0 ? 1.15 : 0.85;
     setZoom(z => Math.min(8, Math.max(0.2, z * factor)));
@@ -203,7 +213,7 @@ export default function App() {
 
   const onMouseUp = () => { dragging.current = false; };
 
-  // Édition du texte
+  // Text Updating
   const updateFullText = (val: string) => {
     const rawLines = val.split('\n');
     setImages(prev => prev.map((img, idx) => {
@@ -267,8 +277,14 @@ export default function App() {
   };
 
   const exportExcel = () => {
-    if (!resultat?.matrice?.length) return;
-    const ws = XLSX.utils.aoa_to_sheet(resultat.matrice);
+    let rows: string[][] = [];
+    if (resultat?.matrice?.length) {
+      rows = resultat.matrice;
+    } else {
+      const textToExport = resultat ? resultat.texte_complet : "Ligne 1\nLigne 2";
+      rows = textToExport.split('\n').map(l => [l]);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'OCR Studio');
     XLSX.writeFile(wb, `${fileName.replace(/\.[^/.]+$/, '')}.xlsx`);
@@ -316,7 +332,7 @@ export default function App() {
   };
 
   return (
-    <main className="min-h-screen bg-[#080b14] text-[#e8eaf2] mesh-bg font-sans selection:bg-[#7c5cfc]/30 selection:text-[#22d4fd]">
+    <main className="min-h-screen font-sans transition-colors">
       
       <Header
         screen={screen}
@@ -340,6 +356,7 @@ export default function App() {
           <DashboardScreen
             onNewDocument={() => fileInputRef.current?.click()}
             onOpenDocument={openDocument}
+            onDropFiles={onDropFiles}
             recentDocuments={RECENT_DOCUMENTS_LIST}
           />
         ) : screen === "preferences" ? (
@@ -358,6 +375,8 @@ export default function App() {
             onExportExcel={exportExcel}
             onExportPdf={exportPdf}
             zoom={zoom}
+            setZoom={setZoom}
+            setPan={setPan}
             pan={pan}
             scale={scale}
             onWheel={onWheel}

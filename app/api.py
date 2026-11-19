@@ -8,6 +8,12 @@ import sys
 import io
 import cv2
 import numpy as np
+import time
+import hashlib
+from functools import lru_cache
+
+# Configurable maximum dimension for resizing (default 1024px)
+MAX_DIM = int(os.getenv("OCR_MAX_DIM", "1024"))
 
 # Fix encodage Windows
 if sys.stdout.encoding != 'utf-8':
@@ -45,26 +51,19 @@ _lecteur = None
 def get_lecteur():
     global _lecteur
     if _lecteur is None:
-        print("[API] Initialisation du moteur OCR Hybride...")
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
+        print(f"[API] OPENAI_API_KEY presente: {bool(openai_key.startswith('sk-'))}")
+        print(f"[API] GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', '(absent)')}")
+
         moteur = HybrideOCR()
         if moteur.est_configure():
             print("[API] Moteur HYBRIDE actif (OpenAI GPT-4o Vision).")
             _lecteur = moteur
         else:
-            # Fallback EasyOCR si OpenAI non configure
-            print("[API] Cle OpenAI manquante. Chargement EasyOCR local...")
-            try:
-                try:
-                    import torch
-                    torch.set_num_threads(os.cpu_count() or 4)
-                except Exception:
-                    pass
-                from ocr_core import LecteurManuscrit
-                _lecteur = LecteurManuscrit(langues=["fr", "en"])
-                print("[API] EasyOCR pret.")
-            except Exception as e:
-                print(f"[API] Impossible de charger le moteur local EasyOCR: {e}")
-                _lecteur = moteur
+            # Sur Vercel Serverless, EasyOCR/PyTorch est impossible a charger.
+            # On garde le moteur hybride non configure — il retournera une erreur claire.
+            print("[API] AVERTISSEMENT: OPENAI_API_KEY absente ou invalide. Aucun moteur IA disponible.")
+            _lecteur = moteur
     return _lecteur
 
 
@@ -79,7 +78,13 @@ async def get_index():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "engine": "hybrid-gpt4o"}
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    return {
+        "status": "ok",
+        "engine": "hybrid-gpt4o",
+        "openai_configured": openai_key.startswith("sk-"),
+        "google_configured": bool(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", ""))
+    }
 
 
 @app.post("/api/analyze")
@@ -87,20 +92,54 @@ async def analyze_image(
     file: UploadFile = File(...),
     pretraitement: bool = Form(True)
 ):
+    # Verifier la configuration avant tout traitement
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key.startswith("sk-"):
+        print("[API] ERREUR: OPENAI_API_KEY non configuree dans les variables d'environnement Vercel.")
+        return {
+            "success": False,
+            "error": (
+                "Le moteur OCR n'est pas configure. "
+                "Veuillez ajouter OPENAI_API_KEY dans les variables d'environnement "
+                "du projet backend sur Vercel (Settings > Environment Variables)."
+            )
+        }
+
     lecteur = get_lecteur()
 
     # Lire les bytes
     contents = await file.read()
+    print(f"[API] Image recue: {len(contents)} octets, fichier: {file.filename}")
+
     nparr = np.frombuffer(contents, np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
     if image is None:
-        return {"success": False, "error": "Impossible de decoder l'image."}
+        return {"success": False, "error": "Impossible de decoder l'image. Format non supporte."}
 
     h, w = image.shape[:2]
+    print(f"[API] Image decodee: {w}x{h} px")
 
     # Lancer l'OCR
-    resultat = lecteur.lire_depuis_tableau(image, appliquer_pretraitement=pretraitement)
+    try:
+        resultat = lecteur.lire_depuis_tableau(image, appliquer_pretraitement=pretraitement)
+    except Exception as e:
+        print(f"[API] ERREUR OCR: {e}")
+        return {"success": False, "error": f"Erreur lors de l'analyse OCR: {str(e)}"}
+
+    texte = resultat.texte_complet.strip()
+    print(f"[API] Texte extrait: {len(texte)} caracteres. Debut: '{texte[:80]}'")
+
+    # Retourner une erreur explicite si le texte est vide
+    if not texte:
+        return {
+            "success": False,
+            "error": (
+                "Aucun texte detecte dans l'image. "
+                "Verifiez que OPENAI_API_KEY est valide dans Vercel "
+                "et que l'image contient du texte lisible."
+            )
+        }
 
     # Reconstruire tableau
     matrice = resultat.reconstruire_tableau()
