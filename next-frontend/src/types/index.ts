@@ -15,6 +15,8 @@ export interface ResultatOCR {
   matrice: string[][];
 }
 
+export type TranscriptionMode = 'ai' | 'manual';
+
 export interface ImageDocument {
   id: number;
   file?: File;
@@ -23,8 +25,12 @@ export interface ImageDocument {
   resultat: ResultatOCR | null;
   step: AppStep;
   errMsg?: string;
+  transcriptionMode?: TranscriptionMode;
+  texteManuel?: string;
 }
 
 export type AppStep = 'empty' | 'loading' | 'done' | 'error';
 export type ScreenView = 'home' | 'review' | 'preferences';
 export type InputMode = 'upload' | 'camera';
+export type EditorDisplayMode = 'edit' | 'split' | 'preview';
+export type ImageFilterMode = 'none' | 'contrast' | 'grayscale' | 'invert' | 'sharpen';

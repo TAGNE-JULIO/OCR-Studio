@@ -9,7 +9,7 @@ import { DashboardScreen } from '../components/screens/DashboardScreen';
 import { ReviewScreen } from '../components/screens/ReviewScreen';
 import { CameraModal } from '../components/screens/CameraModal';
 import { PreferencesScreen } from '../components/screens/PreferencesScreen';
-import { ImageDocument, ScreenView, InputMode, ResultatOCR } from '../types';
+import { ImageDocument, ScreenView, InputMode, ResultatOCR, TranscriptionMode } from '../types';
 
 const RECENT_DOCUMENTS_LIST = [
   { id: 1, title: "Notes — réunion produit", date: "Aujourd’hui, 10:42", pages: "2 pages", score: "98,4 %" },
@@ -27,7 +27,6 @@ export default function App() {
   const [inputMode, setInputMode] = useState<InputMode>("upload");
   const [showBoxes, setShowBoxes] = useState(true);
   const [activeLineId, setActiveLineId] = useState<number | null>(null);
-  const [richView, setRichView] = useState(false);
 
   // Zoom & Pan
   const [zoom, setZoom] = useState(1);
@@ -63,25 +62,39 @@ export default function App() {
     return () => window.removeEventListener('resize', recalc);
   }, [recalc]);
 
-  // Upload & Process
+  // Upload & Process (Supports both AI and Manual Mode)
   const nextId = useRef(1);
-  const processFile = useCallback(async (file: File, customUrl?: string) => {
+  
+  const processFile = useCallback(async (
+    file: File, 
+    customUrl?: string, 
+    mode: TranscriptionMode = 'ai'
+  ) => {
     const id = nextId.current++;
     const objectUrl = customUrl ?? URL.createObjectURL(file);
+    
     const newDoc: ImageDocument = {
       id,
       file,
       url: objectUrl,
-      name: file.name || "document_manuscrit.jpg",
-      step: 'loading',
+      name: file.name || `document_${id}.jpg`,
+      step: mode === 'manual' ? 'done' : 'loading',
       resultat: null,
+      transcriptionMode: mode,
+      texteManuel: mode === 'manual' ? `# ${file.name || 'Transcription'}\n\nCommencez à transcrire votre document manuscrit ici...\n` : undefined,
     };
+
     setImages(prev => [newDoc, ...prev]);
     setActiveDocIndex(0);
     setScreen("review");
     setSaved(false);
     setZoom(1); 
     setPan({ x: 0, y: 0 });
+
+    // If manual mode selected: DO NOT call AI! Let user transcribe directly!
+    if (mode === 'manual') {
+      return;
+    }
 
     try {
       const form = new FormData();
@@ -111,14 +124,66 @@ export default function App() {
     }
   }, [recalc]);
 
+  // Create a Blank Document for Pure Manual Entry
+  const createBlankDocument = () => {
+    const id = nextId.current++;
+    const blankDoc: ImageDocument = {
+      id,
+      url: '',
+      name: `Note_Manuscrite_${id}`,
+      step: 'done',
+      resultat: null,
+      transcriptionMode: 'manual',
+      texteManuel: `# Note Manuelle ${id}\n\nÉditez votre texte, vos formules LaTeX et vos tableaux librement ici...\n`,
+    };
+    setImages(prev => [blankDoc, ...prev]);
+    setActiveDocIndex(0);
+    setScreen("review");
+    setSaved(false);
+    setCompare(false); // Focus on editor
+  };
+
+  // Trigger AI on an existing document
+  const triggerAIForCurrentDoc = async () => {
+    if (!currentDoc || !currentDoc.file) {
+      alert("Aucun fichier source disponible pour lancer l'analyse IA.");
+      return;
+    }
+    const id = currentDoc.id;
+    setImages(prev => prev.map(img => img.id === id ? { ...img, step: 'loading', errMsg: undefined } : img));
+
+    try {
+      const form = new FormData();
+      form.append('file', currentDoc.file);
+      form.append('pretraitement', 'true');
+      
+      const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://ocr-studio-api.vercel.app';
+      const apiUrl = `${rawApiUrl.replace(/\/+$/, '')}/api/analyze`;
+      
+      const res = await fetch(apiUrl, { method: 'POST', body: form });
+      if (!res.ok) throw new Error(`Erreur serveur (${res.status} ${res.statusText})`);
+      const data: ResultatOCR = await res.json();
+      if (!data.success) throw new Error((data as any).error || 'Échec de la reconnaissance IA.');
+
+      setImages(prev => prev.map(img => 
+        img.id === id ? { ...img, step: 'done', resultat: data, transcriptionMode: 'ai', texteManuel: data.texte_complet } : img
+      ));
+      setTimeout(recalc, 250);
+    } catch (e: any) {
+      setImages(prev => prev.map(img => 
+        img.id === id ? { ...img, step: 'error', errMsg: e.message } : img
+      ));
+    }
+  };
+
   const onFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files) Array.from(files).forEach(f => processFile(f));
+    if (files) Array.from(files).forEach(f => processFile(f, undefined, 'ai'));
     e.target.value = '';
   };
 
   const onDropFiles = (files: FileList) => {
-    Array.from(files).forEach(f => processFile(f));
+    Array.from(files).forEach(f => processFile(f, undefined, 'ai'));
   };
 
   const loadSampleImage = async () => {
@@ -126,7 +191,7 @@ export default function App() {
       const res = await fetch('/test_manuscrit.png');
       const blob = await res.blob();
       const file = new File([blob], 'reunion_produit_manuscrit.png', { type: 'image/png' });
-      processFile(file, '/test_manuscrit.png');
+      processFile(file, '/test_manuscrit.png', 'ai');
     } catch {
       alert("Impossible de charger la démo.");
     }
@@ -141,21 +206,37 @@ export default function App() {
     }
   };
 
-  // WebRTC Camera Controls
+  // WebRTC Camera Controls with Robust Fallback
   const startCamera = async (front = false) => {
     try {
       if (camStream) camStream.getTracks().forEach(t => t.stop());
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: front ? 'user' : 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false,
-      });
+      
+      let stream: MediaStream;
+      try {
+        // First try high resolution 1080p
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: front ? 'user' : 'environment', 
+            width: { ideal: 1920 }, 
+            height: { ideal: 1080 } 
+          },
+          audio: false,
+        });
+      } catch {
+        // Fallback to standard resolution if high-res fails on device
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: front ? 'user' : 'environment' },
+          audio: false,
+        });
+      }
+
       setCamStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
       }
     } catch (e: any) {
-      alert("Erreur accès caméra : " + e.message);
+      alert("Erreur accès caméra : " + (e.message || "Vérifiez les permissions de votre navigateur."));
       setInputMode('upload');
     }
   };
@@ -167,22 +248,10 @@ export default function App() {
     }
   };
 
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const v = videoRef.current;
-    const c = canvasRef.current;
-    c.width = v.videoWidth || 1280;
-    c.height = v.videoHeight || 720;
-    const ctx = c.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(v, 0, 0, c.width, c.height);
-    c.toBlob(blob => {
-      if (!blob) return;
-      const file = new File([blob], `scan_${Date.now()}.jpg`, { type: 'image/jpeg' });
-      stopCamera();
-      setInputMode('upload');
-      processFile(file);
-    }, 'image/jpeg', 0.95);
+  const onPhotoCaptured = (file: File, mode: TranscriptionMode) => {
+    stopCamera();
+    setInputMode('upload');
+    processFile(file, undefined, mode);
   };
 
   useEffect(() => {
@@ -215,24 +284,15 @@ export default function App() {
 
   // Text Updating
   const updateFullText = (val: string) => {
-    const rawLines = val.split('\n');
     setImages(prev => prev.map((img, idx) => {
-      if (idx !== activeDocIndex || !img.resultat) return img;
+      if (idx !== activeDocIndex) return img;
       return {
         ...img,
-        resultat: {
+        texteManuel: val,
+        resultat: img.resultat ? {
           ...img.resultat,
           texte_complet: val,
-          lignes: rawLines.map((lineText, lIdx) => {
-            const existing = img.resultat!.lignes[lIdx];
-            return {
-              id: lIdx,
-              texte: lineText,
-              confiance: existing ? existing.confiance : 1.0,
-              boite: existing ? existing.boite : null,
-            };
-          })
-        }
+        } : null
       };
     }));
   };
@@ -245,9 +305,14 @@ export default function App() {
     a.click();
   };
 
+  const getTextToExport = () => {
+    if (currentDoc?.texteManuel !== undefined) return currentDoc.texteManuel;
+    if (resultat) return resultat.texte_complet;
+    return "Texte OCR Studio";
+  };
+
   const exportWord = () => {
-    const DEFAULT_MANUSCRIPT_TEXT = `Réunion produit — 6 septembre\n\nÀ retenir pour la prochaine version :\n• simplifier l’import de documents\n• afficher les mots à vérifier dès la lecture\n• permettre l’export vers Notion et Google Docs\n\nDécision : tester le nouveau parcours avec 8 personnes lundi.`;
-    const textToExport = resultat ? resultat.texte_complet : DEFAULT_MANUSCRIPT_TEXT;
+    const textToExport = getTextToExport();
     const textHtml = textToExport
       .split('\n')
       .map(l => `<p style="margin-bottom: 10pt; line-height: 1.7; font-size: 11.5pt; text-align: justify; color: #10284b;">${l.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
@@ -267,7 +332,7 @@ export default function App() {
       </head>
       <body>
         <h1>${fileName}</h1>
-        <div class="meta">Document numérisé par OCR Studio Pro · Précision : 98,4%</div>
+        <div class="meta">Document exporté par OCR Studio Pro</div>
         <div style="margin-top: 16pt;">${textHtml}</div>
       </body>
       </html>
@@ -281,7 +346,7 @@ export default function App() {
     if (resultat?.matrice?.length) {
       rows = resultat.matrice;
     } else {
-      const textToExport = resultat ? resultat.texte_complet : "Ligne 1\nLigne 2";
+      const textToExport = getTextToExport();
       rows = textToExport.split('\n').map(l => [l]);
     }
     const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -291,8 +356,7 @@ export default function App() {
   };
 
   const exportPdf = () => {
-    const DEFAULT_MANUSCRIPT_TEXT = `Réunion produit — 6 septembre\n\nÀ retenir pour la prochaine version :\n• simplifier l’import de documents\n• afficher les mots à vérifier dès la lecture\n• permettre l’export vers Notion et Google Docs\n\nDécision : tester le nouveau parcours avec 8 personnes lundi.`;
-    const textToExport = resultat ? resultat.texte_complet : DEFAULT_MANUSCRIPT_TEXT;
+    const textToExport = getTextToExport();
     const htmlLines = textToExport.split('\n').map(l => `<p>${l.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`).join('');
     
     const printWindow = window.open('', '_blank');
@@ -314,7 +378,7 @@ export default function App() {
           </head>
           <body>
             <h1>${fileName}</h1>
-            <div class="meta">Document numérisé par OCR Studio Pro · Précision : 98,4%</div>
+            <div class="meta">Document exporté par OCR Studio Pro</div>
             ${htmlLines}
             <script>
               window.onload = function() {
@@ -329,6 +393,12 @@ export default function App() {
       `);
       printWindow.document.close();
     }
+  };
+
+  const exportTxt = () => {
+    const textToExport = getTextToExport();
+    const blob = new Blob([textToExport], { type: 'text/plain;charset=utf-8' });
+    dl(blob, `${fileName.replace(/\.[^/.]+$/, '')}.txt`);
   };
 
   return (
@@ -355,6 +425,7 @@ export default function App() {
         {screen === "home" ? (
           <DashboardScreen
             onNewDocument={() => fileInputRef.current?.click()}
+            onNewBlankDocument={createBlankDocument}
             onOpenDocument={openDocument}
             onDropFiles={onDropFiles}
             recentDocuments={RECENT_DOCUMENTS_LIST}
@@ -374,6 +445,8 @@ export default function App() {
             onExportWord={exportWord}
             onExportExcel={exportExcel}
             onExportPdf={exportPdf}
+            onExportTxt={exportTxt}
+            onTriggerAI={triggerAIForCurrentDoc}
             zoom={zoom}
             setZoom={setZoom}
             setPan={setPan}
@@ -390,14 +463,12 @@ export default function App() {
             setActiveLineId={setActiveLineId}
             saved={saved}
             setSaved={setSaved}
-            richView={richView}
-            setRichView={setRichView}
             updateFullText={updateFullText}
           />
         )}
       </div>
 
-      {/* Mobile Bottom Navigation for Small Screens */}
+      {/* Mobile Bottom Navigation */}
       <MobileBottomNav
         screen={screen}
         setScreen={setScreen}
@@ -412,7 +483,8 @@ export default function App() {
           canvasRef={canvasRef}
           setInputMode={setInputMode}
           setCamFront={setCamFront}
-          capturePhoto={capturePhoto}
+          camFront={camFront}
+          onPhotoCaptured={onPhotoCaptured}
         />
       )}
 
